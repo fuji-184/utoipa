@@ -88,7 +88,7 @@ impl SwaggerZip {
         }
     }
 
-    fn by_index(&mut self, index: usize) -> Result<zip::read::ZipFile, ZipError> {
+    fn by_index(&mut self, index: usize) -> Result<zip::read::ZipFile<R>, ZipError> {
         match self {
             Self::File(file) => file.by_index(index),
             Self::Bytes(bytes) => bytes.by_index(index),
