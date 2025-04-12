@@ -2,7 +2,7 @@ use std::{
     env,
     error::Error,
     fs::{self, File},
-    io::{self, Cursor},
+    io::{self, Cursor, Read},
     path::{Path, PathBuf},
 };
 
@@ -88,21 +88,42 @@ impl SwaggerZip {
         }
     }
 
-    fn by_index(&mut self, index: usize) -> Result<zip::read::ZipFile<R>, ZipError> {
-        match self {
-            Self::File(file) => file.by_index(index),
-            Self::Bytes(bytes) => bytes.by_index(index),
-        }
-    }
-
     fn extract_dist(&mut self, target_dir: &str) -> Result<String, ZipError> {
         let mut zip_top_level_folder = String::new();
 
         for index in 0..self.len() {
-            let mut file = self.by_index(index)?;
-            let filepath = file
-                .enclosed_name()
-                .ok_or(ZipError::InvalidArchive(std::borrow::Cow::Borrowed("invalid path file")))?;
+            // Handle different ZipFile types using trait objects instead of direct matching
+            let mut file_data = Vec::new();
+            let filepath;
+            let is_dir;
+            let unix_mode;
+
+            match self {
+                Self::File(file) => {
+                    let mut file_entry = file.by_index(index)?;
+                    filepath = file_entry
+                        .enclosed_name()
+                        .ok_or(ZipError::InvalidArchive(std::borrow::Cow::Borrowed("invalid path file")))?
+                        .to_owned();
+                    is_dir = file_entry.name().ends_with('/');
+                    unix_mode = file_entry.unix_mode();
+                    if !is_dir {
+                        file_entry.read_to_end(&mut file_data)?;
+                    }
+                },
+                Self::Bytes(bytes) => {
+                    let mut bytes_entry = bytes.by_index(index)?;
+                    filepath = bytes_entry
+                        .enclosed_name()
+                        .ok_or(ZipError::InvalidArchive(std::borrow::Cow::Borrowed("invalid path file")))?
+                        .to_owned();
+                    is_dir = bytes_entry.name().ends_with('/');
+                    unix_mode = bytes_entry.unix_mode();
+                    if !is_dir {
+                        bytes_entry.read_to_end(&mut file_data)?;
+                    }
+                },
+            }
 
             if index == 0 {
                 zip_top_level_folder = filepath
@@ -121,9 +142,9 @@ impl SwaggerZip {
 
             if next_folder == "dist" {
                 let directory = [&target_dir].iter().collect::<PathBuf>();
-                let out_path = directory.join(filepath);
+                let out_path = directory.join(&filepath);
 
-                if file.name().ends_with('/') {
+                if is_dir {
                     fs::create_dir_all(&out_path)?;
                 } else {
                     if let Some(p) = out_path.parent() {
@@ -132,13 +153,13 @@ impl SwaggerZip {
                         }
                     }
                     let mut out_file = fs::File::create(&out_path)?;
-                    io::copy(&mut file, &mut out_file)?;
+                    io::copy(&mut Cursor::new(&file_data), &mut out_file)?;
                 }
                 // Get and Set permissions
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    if let Some(mode) = file.unix_mode() {
+                    if let Some(mode) = unix_mode {
                         fs::set_permissions(&out_path, fs::Permissions::from_mode(mode))?;
                     }
                 }
