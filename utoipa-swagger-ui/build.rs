@@ -103,7 +103,7 @@ impl SwaggerZip {
                     let mut file_entry = file.by_index(index)?;
                     filepath = file_entry
                         .enclosed_name()
-                        .ok_or(ZipError::InvalidArchive(std::borrow::Cow::Borrowed("invalid path file")))?
+                        .ok_or(ZipError::InvalidArchive(&std::borrow::Cow::Borrowed("invalid path file")))?
                         .to_owned();
                     is_dir = file_entry.name().ends_with('/');
                     unix_mode = file_entry.unix_mode();
@@ -115,7 +115,7 @@ impl SwaggerZip {
                     let mut bytes_entry = bytes.by_index(index)?;
                     filepath = bytes_entry
                         .enclosed_name()
-                        .ok_or(ZipError::InvalidArchive(std::borrow::Cow::Borrowed("invalid path file")))?
+                        .ok_or(ZipError::InvalidArchive(&std::borrow::Cow::Borrowed("invalid path file")))?
                         .to_owned();
                     is_dir = bytes_entry.name().ends_with('/');
                     unix_mode = bytes_entry.unix_mode();
